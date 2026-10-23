@@ -38,3 +38,40 @@ void log_message(const char *level, const char *message) {
     }
     LeaveCriticalSection(&log_lock);
 }
+
+    int is_blocked(const char *host) {
+    const char *blocked_list[] = {"example.blocked.com", "malicious.com", "ads.com", NULL};
+    for (int i = 0; blocked_list[i] != NULL; i++) {
+        if (strstr(host, blocked_list[i]) != NULL) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+
+CacheNode* find_in_cache(const char *url) {
+    EnterCriticalSection(&cache_lock);
+    CacheNode *curr = cache_head;
+    while (curr != NULL) {
+        if (strcmp(curr->url, url) == 0) {
+            LeaveCriticalSection(&cache_lock);
+            return curr;
+        }
+        curr = curr->next;
+    }
+    LeaveCriticalSection(&cache_lock);
+    return NULL;
+}
+
+
+void add_to_cache(const char *url, const char *response, int size) {
+    EnterCriticalSection(&cache_lock);
+    
+    // Simple replacement if cache exceeds limit
+    CacheNode *curr = cache_head;
+    int count = 0;
+    while(curr != NULL) {
+        count++;
+        curr = curr->next;
+    }
