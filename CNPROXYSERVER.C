@@ -75,3 +75,43 @@ void add_to_cache(const char *url, const char *response, int size) {
         count++;
         curr = curr->next;
     }
+
+       if (count >= CACHE_CAPACITY && cache_head != NULL) {
+        CacheNode *temp = cache_head;
+        cache_head = cache_head->next;
+        free(temp->response);
+        free(temp);
+    }
+
+    CacheNode *newNode = (CacheNode *)malloc(sizeof(CacheNode));
+    if (!newNode) {
+        LeaveCriticalSection(&cache_lock);
+        return;
+    }
+    strcpy_s(newNode->url, sizeof(newNode->url), url);
+    newNode->response = (char *)malloc(size);
+    if (!newNode->response) {
+        free(newNode);
+        LeaveCriticalSection(&cache_lock);
+        return;
+    }
+    memcpy(newNode->response, response, size);
+    newNode->response_size = size;
+    newNode->next = cache_head;
+    cache_head = newNode;
+
+    LeaveCriticalSection(&cache_lock);
+}
+
+// Client Handler Thread
+DWORD WINAPI handle_client(LPVOID lpParam) {
+    client_info *info = (client_info *)lpParam;
+    SOCKET client_sock = info->client_socket;
+    free(info);
+
+    char buffer[BUFFER_SIZE];
+    int bytes_received = recv(client_sock, buffer, BUFFER_SIZE - 1, 0);
+    if (bytes_received <= 0) {
+        closesocket(client_sock);
+        return 0;
+    }
