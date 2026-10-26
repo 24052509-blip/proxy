@@ -149,3 +149,72 @@ DWORD WINAPI handle_client(LPVOID lpParam) {
         closesocket(client_sock);
         return 0;
     }
+
+      // Check Cache
+    CacheNode *cached = find_in_cache(url);
+    if (cached != NULL) {
+        log_message("CACHE", "Serving response from Cache");
+        send(client_sock, cached->response, cached->response_size, 0);
+        closesocket(client_sock);
+        return 0;
+    }
+
+    // Forward request to destination server (Default Port 80)
+    struct sockaddr_in server_addr;
+    SOCKET server_sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_sock == INVALID_SOCKET) {
+        log_message("ERROR", "Failed to create server socket for forwarding");
+        closesocket(client_sock);
+        return 0;
+    }
+
+    // Resolve Host IP
+    struct hostent *he = gethostbyname(host);
+    if (he == NULL) {
+        log_message("ERROR", "Failed to resolve destination hostname");
+        closesocket(server_sock);
+        closesocket(client_sock);
+        return 0;
+    }
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(80);
+    server_addr.sin_addr = *((struct in_addr *)he->h_addr);
+
+    if (connect(server_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        log_message("ERROR", "Failed to connect to destination server");
+        closesocket(server_sock);
+        closesocket(client_sock);
+        return 0;
+    }
+
+    // Forward original request to destination server
+    send(server_sock, buffer, bytes_received, 0);
+
+    // Receive response from server and relay to client + accumulate for cache
+    char *full_response = NULL;
+    int total_size = 0;
+    int resp_bytes;
+
+    while ((resp_bytes = recv(server_sock, buffer, BUFFER_SIZE, 0)) > 0) {
+        send(client_sock, buffer, resp_bytes, 0);
+        
+        // Accumulate for caching
+        char *temp = (char *)realloc(full_response, total_size + resp_bytes);
+        if (temp) {
+            full_response = temp;
+            memcpy(full_response + total_size, buffer, resp_bytes);
+            total_size += resp_bytes;
+        }
+    }
+
+    if (full_response && total_size > 0) {
+        add_to_cache(url, full_response, total_size);
+        free(full_response);
+    }
+
+    closesocket(server_sock);
+    closesocket(client_sock);
+    log_message("INFO", "Request successfully completed and closed.");
+    return 0;
+}
