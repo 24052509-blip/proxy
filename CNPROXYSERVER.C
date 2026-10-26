@@ -115,3 +115,37 @@ DWORD WINAPI handle_client(LPVOID lpParam) {
         closesocket(client_sock);
         return 0;
     }
+
+        buffer[bytes_received] = '\0';
+
+    // Parse HTTP Request (Method, URL, Host)
+    char method[16], url[512], protocol[16];
+    if (sscanf(buffer, "%s %s %s", method, url, protocol) < 2) {
+        closesocket(client_sock);
+        return 0;
+    }
+
+    // Extract Host
+    char host[256] = "";
+    char *host_header = strstr(buffer, "Host: ");
+    if (host_header) {
+        sscanf(host_header, "Host: %255[^\r\n]", host);
+    }
+
+    char log_buf[512];
+    sprintf_s(log_buf, sizeof(log_buf), "Request received for URL: %s [Host: %s]", url, host);
+    log_message("INFO", log_buf);
+
+    // Access Control check
+    if (is_blocked(host) || is_blocked(url)) {
+        sprintf_s(log_buf, sizeof(log_buf), "Access Blocked for host: %s", host);
+        log_message("BLOCKED", log_buf);
+        
+        const char *forbidden_response = 
+            "HTTP/1.1 403 Forbidden\r\n"
+            "Content-Type: text/html\r\n\r\n"
+            "<html><body><h1>403 Forbidden</h1><p>Access to this domain is blocked by proxy.</p></body></html>";
+        send(client_sock, forbidden_response, (int)strlen(forbidden_response), 0);
+        closesocket(client_sock);
+        return 0;
+    }
