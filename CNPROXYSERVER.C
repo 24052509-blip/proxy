@@ -88,7 +88,7 @@ void add_to_cache(const char *url, const char *response, int size) {
         LeaveCriticalSection(&cache_lock);
         return;
     }
-    strcpy_s(newNode->url, sizeof(newNode->url), url);
+    strcpy(newNode->url,url);
     newNode->response = (char *)malloc(size);
     if (!newNode->response) {
         free(newNode);
@@ -133,12 +133,12 @@ DWORD WINAPI handle_client(LPVOID lpParam) {
     }
 
     char log_buf[512];
-    sprintf_s(log_buf, sizeof(log_buf), "Request received for URL: %s [Host: %s]", url, host);
+    sprintf(log_buf,"Request received for URL: %s [Host: %s]", url, host);
     log_message("INFO", log_buf);
 
     // Access Control check
     if (is_blocked(host) || is_blocked(url)) {
-        sprintf_s(log_buf, sizeof(log_buf), "Access Blocked for host: %s", host);
+        sprintf(log_buf, "Access Blocked for host: %s", host);
         log_message("BLOCKED", log_buf);
         
         const char *forbidden_response = 
