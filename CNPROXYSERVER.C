@@ -218,3 +218,81 @@ DWORD WINAPI handle_client(LPVOID lpParam) {
     log_message("INFO", "Request successfully completed and closed.");
     return 0;
 }
+
+int main() {
+    WSADATA wsaData;
+    SOCKET server_sock, client_sock;
+    struct sockaddr_in server_addr, client_addr;
+    int addr_len = sizeof(client_addr);
+
+    InitializeCriticalSection(&cache_lock);
+    InitializeCriticalSection(&log_lock);
+
+    // Initialize Winsock
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        printf("WSAStartup failed.\n");
+        return 1;
+    }
+
+    server_sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_sock == INVALID_SOCKET) {
+        printf("Socket creation failed.\n");
+        WSACleanup();
+        return 1;
+    }
+
+    int opt = 1;
+    setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt));
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(PORT);
+
+    if (bind(server_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
+        printf("Bind failed.\n");
+        closesocket(server_sock);
+        WSACleanup();
+        return 1;
+    }
+
+    if (listen(server_sock, SOMAXCONN) == SOCKET_ERROR) {
+        printf("Listen failed.\n");
+        closesocket(server_sock);
+        WSACleanup();
+        return 1;
+    }
+
+    printf("==================================================\n");
+    printf(" Windows Multi-Threaded HTTP Proxy Running on Port %d\n", PORT);
+    printf("==================================================\n");
+
+    while (1) {
+        client_sock = accept(server_sock, (struct sockaddr *)&client_addr, &addr_len);
+        if (client_sock == INVALID_SOCKET) {
+            continue;
+        }
+
+        client_info *info = (client_info *)malloc(sizeof(client_info));
+        if (!info) {
+            closesocket(client_sock);
+            continue;
+        }
+        info->client_socket = client_sock;
+        info->client_addr = client_addr;
+
+        DWORD thread_id;
+        HANDLE thread = CreateThread(NULL, 0, handle_client, info, 0, &thread_id);
+        if (thread != NULL) {
+            CloseHandle(thread);
+        } else {
+            free(info);
+            closesocket(client_sock);
+        }
+    }
+
+    closesocket(server_sock);
+    DeleteCriticalSection(&cache_lock);
+    DeleteCriticalSection(&log_lock);
+    WSACleanup();
+    return 0;
+}
